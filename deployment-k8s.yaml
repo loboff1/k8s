@@ -1,0 +1,43 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  labels:
+    app: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+    spec:
+      containers:
+      - name: app
+        image: ncdevreg.ml:5000/webapp
+        ports:
+        - containerPort: 80  # Port on Pod
+          protocol: TCP
+          name: http
+          # Настройка потребления ресурсов
+        resources:
+        # резервирование необходимых ресурсов для пода
+          requests:         
+            cpu: 200m       # по условию на первые запросы приложению требуется значительно больше ресурсов CPU
+            memory: 128Mi   # по условию память всегда ровно в районе 128M memory        
+        # верхняя планка использования ресурсов
+          limits:           
+            cpu: 100m       # по условию в дальнейшем потребление ровное в районе 0.1 CPU
+            memory: 128Mi   # по условию память всегда ровно в районе 128M memory
+          # Пробы запуска
+        startupProbe:
+          httpGet:
+            path: /
+            port: 80
+          # По условию приложение требует около 5-10 секунд для инициализации 
+          # Поэтому с помощью проб failureThreshold и periodSeconds зададим приложению время на запуск до того, как будет диагностирован сбой
+          failureThreshold: 3   # количество повторных попыток до пометки пробы как неудачной
+          periodSeconds: 4      # как часто проверять пробу
