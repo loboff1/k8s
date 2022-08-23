@@ -1,12 +1,13 @@
 ---
 apiVersion: apps/v1
+# создадим Deployment
 kind: Deployment
 metadata:
   name: app
   labels:
     app: app
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: app
@@ -17,22 +18,22 @@ spec:
     spec:
       containers:
       - name: app
-        image: ncdevreg.ml:5000/webapp
+        image: ncdevreg.ml:5000/webapp:v1
         ports:
         - containerPort: 80  # Port on Pod
           protocol: TCP
           name: http
-          # Настройка потребления ресурсов
+          # настройка потребления ресурсов
         resources:
-        # резервирование необходимых ресурсов для пода
+          # резервирование необходимых ресурсов для пода
           requests:         
             cpu: 200m       # по условию на первые запросы приложению требуется значительно больше ресурсов CPU
             memory: 128Mi   # по условию память всегда ровно в районе 128M memory        
-        # верхняя планка использования ресурсов
+          # верхняя планка использования ресурсов
           limits:           
             cpu: 100m       # по условию в дальнейшем потребление ровное в районе 0.1 CPU
             memory: 128Mi   # по условию память всегда ровно в районе 128M memory
-          # Пробы запуска
+          # настройка проб запуска
         startupProbe:
           httpGet:
             path: /
@@ -41,3 +42,36 @@ spec:
           # Поэтому с помощью проб failureThreshold и periodSeconds зададим приложению время на запуск до того, как будет диагностирован сбой
           failureThreshold: 3   # количество повторных попыток до пометки пробы как неудачной
           periodSeconds: 4      # как часто проверять пробу
+
+---
+apiVersion: autoscaling/v1
+# по условию приложение имеет дневной цикл по нагрузке – ночью запросов на порядки меньше, пик – днём
+# cоздадим простой НРА, который будет выполнять скейлинг по потреблению CPU
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app
+spec:
+# указываем НРА, какой контроллер он будет скейлить
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment            # будет выполнен поиск объекта типа Deployment с именем app
+    name: app
+  # по условию известно, что 4 пода справляются с пиковой нагрузкой
+  minReplicas: 1                # минимальное количество подов в контроллере, которое будет запущено
+  maxReplicas: 4                # максимальное количество подов, которое будет запущено
+  targetCPUUtilizationPercentage: 25    # процент от requests использования CPU, при достижении которого НРА начнёт добавлять или удалять поды
+  
+  ---
+apiVersion: v1
+# создадим Service с типом ClusterIP
+kind: Service
+metadata:
+  labels:
+    app: app
+  name: app
+spec:
+  ports:
+  - port: 8080   # Port on Service
+  selector:
+    app: app
+  type: ClusterIP
